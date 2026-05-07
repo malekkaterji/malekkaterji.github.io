@@ -319,6 +319,23 @@
     </div>
   </section>
 
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const source = params.get('utm_source') || 'website';
+      const medium = params.get('utm_medium') || 'referral';
+
+      const playUrl = new URL('https://play.google.com/store/apps/details');
+      playUrl.searchParams.set('id', 'com.malekkaterji.score');
+      playUrl.searchParams.set('utm_source', source);
+      playUrl.searchParams.set('utm_medium', medium);
+      playUrl.searchParams.set('utm_campaign', 'via_website');
+
+      const playBtn = document.querySelector('a[aria-label="Google Play"]');
+      if (playBtn) playBtn.href = playUrl.toString();
+    })();
+  </script>
+
   <!-- Footer -->
   <footer>
     <div class="footer-links">
