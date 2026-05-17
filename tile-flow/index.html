@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TileFlow — Color Tile Puzzle Game</title>
+  <meta name="description" content="Drag to connect matching tiles, clear the board, build combos. A free daily puzzle game for Android and iOS." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:    #6C63FF;
+      --primary-dark:#4f46e5;
+      --accent:     #9C4DCC;
+      --text:       #1a1a2e;
+      --muted:      #6b7280;
+      --bg:         #f7f8fa;
+      --card:       #ffffff;
+      --border:     #eaeaea;
+      /* theme-driven (overwritten by JS) */
+      --nav-bg:     #1A1A2E;
+      --hero-bg:    linear-gradient(180deg,#1A1A2E 0%,#2A2A4E 50%,#1a1a2e 100%);
+      --hero-glow:  rgba(108,99,255,0.2);
+      --badge-bg:   rgba(108,99,255,0.18);
+      --badge-fg:   #a89cff;
+      --badge-bdr:  rgba(108,99,255,0.3);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--nav-bg);
+      transition: background 0.45s;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none; color: #fff;
+    }
+    .nav-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      background: #2A2A4E;
+      padding: 4px;
+    }
+    .nav-icon-q { border-radius: 3px; }
+    .nav-brand span { font-size: 16px; font-weight: 700; }
+    nav a.nav-link {
+      font-size: 13px; color: rgba(255,255,255,0.6); text-decoration: none;
+    }
+    nav a.nav-link:hover { color: #fff; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 64px;
+      background: var(--hero-bg);
+      transition: background 0.45s;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 600px;
+      background: radial-gradient(ellipse, var(--hero-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: var(--badge-bg); color: var(--badge-fg);
+      border: 1px solid var(--badge-bdr);
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+      padding: 5px 14px; border-radius: 20px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      transition: background 0.45s, color 0.45s, border-color 0.45s;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 6vw, 56px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.1;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 18px;
+      color: rgba(255,255,255,0.65);
+      max-width: 460px;
+      margin: 0 auto 36px;
+    }
+    .game-preview {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 40px);
+      grid-template-rows: repeat(3, 40px);
+      gap: 6px;
+    }
+    .preview-tile {
+      border-radius: 10px;
+      position: relative;
+    }
+    .preview-tile.tf-selecting {
+      box-shadow: 0 0 0 2.5px #fff, 0 0 14px rgba(255,255,255,0.5);
+      transform: scale(1.1);
+      transition: transform 0.08s, box-shadow 0.08s;
+      z-index: 2;
+    }
+    .preview-tile.tf-clearing {
+      animation: tfClear 0.36s ease-out forwards;
+    }
+    .preview-tile.tf-dropping {
+      animation: tfDrop 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+    }
+    @keyframes tfClear {
+      0%   { transform: scale(1.1); opacity: 1; }
+      45%  { transform: scale(1.3); opacity: 0.8; }
+      100% { transform: scale(0);   opacity: 0; }
+    }
+    @keyframes tfDrop {
+      from { transform: translateY(-72px) scale(0.6); opacity: 0; }
+      to   { transform: translateY(0)     scale(1);   opacity: 1; }
+    }
+    .hero-cta {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      font-size: 15px; font-weight: 600;
+      padding: 14px 28px;
+      border-radius: 14px;
+      text-decoration: none;
+      box-shadow: 0 4px 24px rgba(108,99,255,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .hero-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 32px rgba(108,99,255,0.5);
+    }
+
+    /* ── Features ── */
+    .section {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 64px 24px;
+    }
+    .section-label {
+      text-align: center;
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--primary);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      text-align: center;
+      font-size: clamp(22px, 4vw, 32px);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .section-sub {
+      text-align: center;
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 48px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      text-align: center;
+    }
+    .feature-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .feature-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .feature-card p  { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Modes strip ── */
+    .modes-strip {
+      background: #1A1A2E;
+    }
+    .modes-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 56px 24px;
+    }
+    .modes-inner .section-label { color: #a89cff; }
+    .modes-inner .section-title { color: #fff; }
+    .modes-inner .section-sub { color: rgba(255,255,255,0.5); }
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 40px;
+    }
+    .mode-card {
+      background: #2A2A4E;
+      border-radius: 16px;
+      padding: 24px 20px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .mode-card-icon { font-size: 28px; margin-bottom: 12px; display: block; }
+    .mode-card h3 { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .mode-card p  { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.55; }
+    .mode-card .mode-tag {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 11px; font-weight: 600;
+      background: rgba(108,99,255,0.2); color: #a89cff;
+      padding: 3px 10px; border-radius: 20px;
+    }
+
+    /* ── Themes strip ── */
+    .themes-strip {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .themes-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+    .themes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-top: 32px;
+    }
+    .theme-pill {
+      border-radius: 14px;
+      padding: 16px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.15s;
+      outline: 2.5px solid transparent;
+      outline-offset: 3px;
+    }
+    .theme-pill:hover { transform: translateY(-3px); }
+    .theme-pill.active { outline-color: rgba(255,255,255,0.75); }
+    .theme-pill-name {
+      font-size: 13px; font-weight: 600; color: #fff;
+      margin-top: 10px;
+      display: block;
+    }
+    .theme-swatch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      width: 40px; height: 40px;
+      margin: 0 auto;
+    }
+    .theme-swatch span { border-radius: 4px; display: block; }
+
+    /* ── Download ── */
+    .download-section {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      text-align: center;
+      padding: 72px 24px;
+    }
+    .download-section h2 {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .download-section p {
+      font-size: 16px;
+      opacity: 0.85;
+      margin-bottom: 36px;
+    }
+    .store-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .store-btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,0.15);
+      border: 1.5px solid rgba(255,255,255,0.4);
+      color: #fff;
+      padding: 12px 22px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 14px; font-weight: 600;
+      backdrop-filter: blur(8px);
+      transition: background 0.15s;
+    }
+    .store-btn:hover { background: rgba(255,255,255,0.25); }
+    .store-btn-icon { font-size: 22px; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 32px 24px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .footer-links { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <a class="nav-brand" href="/tile-flow/">
+      <div class="nav-icon">
+        <div class="nav-icon-q" style="background:#3498DB;"></div>
+        <div class="nav-icon-q" style="background:#E74C3C;"></div>
+        <div class="nav-icon-q" style="background:#2ECC71;"></div>
+        <div class="nav-icon-q" style="background:#F1C40F;"></div>
+      </div>
+      <span>TileFlow</span>
+    </a>
+    <a class="nav-link" href="mailto:malek.development@gmail.com">Contact</a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>Connect. Clear.<br><em>Flow.</em></h1>
+    <p>Drag across matching tiles to clear the board, build combos, and climb the ranks — one swipe at a time.</p>
+    <div class="game-preview" aria-hidden="true">
+      <div class="preview-grid" id="tf-preview-grid"></div>
+    </div>
+    <a class="hero-cta" href="#download">
+      <span>Download Free</span>
+      <span>↓</span>
+    </a>
+  </section>
+
+  <!-- Features -->
+  <div class="section">
+    <p class="section-label">How it works</p>
+    <h2 class="section-title">Simple rules. Deep strategy.</h2>
+    <p class="section-sub">Drag across 3 or more adjacent same-color tiles to clear them. Watch tiles fall and chains build.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="feature-icon">👆</span>
+        <h3>Drag to connect</h3>
+        <p>Swipe across matching-color tiles in any direction to form a chain and clear them.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">💥</span>
+        <h3>Combo multipliers</h3>
+        <p>Chain 5+ tiles in one move for bonus XP. Chain 10+ for a mega combo burst.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">⬆️</span>
+        <h3>Escalating difficulty</h3>
+        <p>Grid grows and colors multiply as your score climbs — from 4×4 to 6×6.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🏆</span>
+        <h3>XP &amp; ranks</h3>
+        <p>Every tile cleared earns XP. Rise from Beginner to Flow Legend across 6 ranks.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game modes -->
+  <div class="modes-strip">
+    <div class="modes-inner">
+      <p class="section-label">Game Modes</p>
+      <h2 class="section-title" style="color:#fff;">Three ways to play</h2>
+      <p class="section-sub">A mode for every mood — endless, focused, or frantic.</p>
+      <div class="modes-grid">
+        <div class="mode-card">
+          <span class="mode-card-icon">♾️</span>
+          <h3>Classic</h3>
+          <p>Endless play. Score as high as you can. The board gets harder as you go — more colors, bigger grids, obstacle tiles.</p>
+          <span class="mode-tag">Endless</span>
+        </div>
+        <div class="mode-card">
+          <span class="mode-card-icon">📅</span>
+          <h3>Daily Challenge</h3>
+          <p>One unique puzzle per day, shared by everyone. 30 moves to clear as many tiles as possible. Streak tracked daily.</p>
+          <span class="mode-tag">Once a day</span>
+        </div>
+        <div class="mode-card">
+          <span class="mode-card-icon">⚡</span>
+          <h3>Blitz</h3>
+          <p>90 seconds. Clear as much as you can before time runs out. Big combos add extra seconds back to the clock.</p>
+          <span class="mode-tag">90 seconds</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Themes -->
+  <div class="themes-strip">
+    <div class="themes-inner">
+      <p class="section-label" style="text-align:center;">Visual Themes</p>
+      <h2 class="section-title">6 unlockable themes</h2>
+      <p class="section-sub">Earn XP and complete challenges to unlock new color palettes — no purchases needed.</p>
+      <div class="themes-grid">
+        <div class="theme-pill active" data-theme="classic" style="background:#1A1A2E;">
+          <div class="theme-swatch">
+            <span style="background:#7C4DFF;"></span>
+            <span style="background:#FF4081;"></span>
+            <span style="background:#00BFA5;"></span>
+            <span style="background:#FFD740;"></span>
+          </div>
+          <span class="theme-pill-name">Classic</span>
+        </div>
+        <div class="theme-pill" data-theme="ocean" style="background:#0A1929;">
+          <div class="theme-swatch">
+            <span style="background:#1565C0;"></span>
+            <span style="background:#FF7043;"></span>
+            <span style="background:#69F0AE;"></span>
+            <span style="background:#FFC107;"></span>
+          </div>
+          <span class="theme-pill-name">Ocean</span>
+        </div>
+        <div class="theme-pill" data-theme="sunset" style="background:#1A0A0A;">
+          <div class="theme-swatch">
+            <span style="background:#FF3D00;"></span>
+            <span style="background:#651FFF;"></span>
+            <span style="background:#FFD740;"></span>
+            <span style="background:#F50057;"></span>
+          </div>
+          <span class="theme-pill-name">Sunset</span>
+        </div>
+        <div class="theme-pill" data-theme="forest" style="background:#0A1A0A;">
+          <div class="theme-swatch">
+            <span style="background:#2E7D32;"></span>
+            <span style="background:#42A5F5;"></span>
+            <span style="background:#F9A825;"></span>
+            <span style="background:#E53935;"></span>
+          </div>
+          <span class="theme-pill-name">Forest</span>
+        </div>
+        <div class="theme-pill" data-theme="neon" style="background:#050510;">
+          <div class="theme-swatch">
+            <span style="background:#00FFFF;"></span>
+            <span style="background:#FF0080;"></span>
+            <span style="background:#00FF41;"></span>
+            <span style="background:#FFFF00;"></span>
+          </div>
+          <span class="theme-pill-name">Neon</span>
+        </div>
+        <div class="theme-pill" data-theme="galaxy" style="background:#050510;">
+          <div class="theme-swatch">
+            <span style="background:#7C4DFF;"></span>
+            <span style="background:#FF4081;"></span>
+            <span style="background:#00BFA5;"></span>
+            <span style="background:#FFD740;"></span>
+          </div>
+          <span class="theme-pill-name">Galaxy</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download -->
+  <section class="download-section" id="download">
+    <h2>Download TileFlow</h2>
+    <p>Free on Android and iOS. Available in 5 languages.</p>
+    <div class="store-buttons">
+      <a class="store-btn" href="https://play.google.com/store/apps/details?id=com.malekkaterji.tileflow" aria-label="Google Play" target="_blank" rel="noopener">
+        <span class="store-btn-icon">▶</span>
+        <div style="text-align:left;">
+          <div style="font-size:10px;opacity:0.8;font-weight:400;">GET IT ON</div>
+          <div>Google Play</div>
+        </div>
+      </a>
+      <a class="store-btn" href="https://apps.apple.com/app/tileflow/id0000000000" aria-label="App Store" target="_blank" rel="noopener">
+        <span class="store-btn-icon"></span>
+        <div style="text-align:left;">
+          <div style="font-size:10px;opacity:0.8;font-weight:400;">DOWNLOAD ON THE</div>
+          <div>App Store</div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const source = params.get('utm_source') || 'website';
+      const medium = params.get('utm_medium') || 'referral';
+
+      const playUrl = new URL('https://play.google.com/store/apps/details');
+      playUrl.searchParams.set('id', 'com.malekkaterji.tileflow');
+      playUrl.searchParams.set('utm_source', source);
+      playUrl.searchParams.set('utm_medium', medium);
+      playUrl.searchParams.set('utm_campaign', 'via_website');
+
+      const playBtn = document.querySelector('a[aria-label="Google Play"]');
+      if (playBtn) playBtn.href = playUrl.toString();
+    })();
+  </script>
+
+  <script>
+    (function () {
+      /* ── Theme definitions ────────────────────────────────────────────
+         tiles[]: 6 colours used by the animation (indices 0–5)
+         idx 0=transient-A  1=zone-A  2=zone-B  3=zone-D  4=zone-C  5=transient-C
+         ──────────────────────────────────────────────────────────────── */
+      const THEMES = {
+        classic: {
+          navBg:   '#1A1A2E', iconBg: '#2A2A4E',
+          heroBg:  'linear-gradient(180deg,#1A1A2E 0%,#2A2A4E 50%,#1a1a2e 100%)',
+          heroGlow:'rgba(108,99,255,0.2)',
+          primary: '#6C63FF', accent: '#9C4DCC',
+          badgeBg: 'rgba(108,99,255,0.18)', badgeFg:'#a89cff', badgeBdr:'rgba(108,99,255,0.3)',
+          tiles:   ['#FF4081','#7C4DFF','#00BFA5','#FFD740','#FF6D00','#40C4FF'],
+        },
+        ocean: {
+          navBg:   '#0A1929', iconBg: '#0d2137',
+          heroBg:  'linear-gradient(180deg,#0A1929 0%,#0d2137 50%,#0A1929 100%)',
+          heroGlow:'rgba(21,101,192,0.2)',
+          primary: '#1565C0', accent: '#26C6DA',
+          badgeBg: 'rgba(21,101,192,0.18)', badgeFg:'#64B5F6', badgeBdr:'rgba(21,101,192,0.3)',
+          tiles:   ['#FF7043','#1565C0','#26C6DA','#FFC107','#69F0AE','#7B1FA2'],
+        },
+        sunset: {
+          navBg:   '#1A0A0A', iconBg: '#2A1010',
+          heroBg:  'linear-gradient(180deg,#1A0A0A 0%,#2A1010 50%,#1A0A0A 100%)',
+          heroGlow:'rgba(255,61,0,0.2)',
+          primary: '#FF3D00', accent: '#651FFF',
+          badgeBg: 'rgba(255,61,0,0.18)', badgeFg:'#FF8A65', badgeBdr:'rgba(255,61,0,0.3)',
+          tiles:   ['#F50057','#651FFF','#FFD740','#FF3D00','#FF6D00','#E040FB'],
+        },
+        forest: {
+          navBg:   '#0A1A0A', iconBg: '#112211',
+          heroBg:  'linear-gradient(180deg,#0A1A0A 0%,#112211 50%,#0A1A0A 100%)',
+          heroGlow:'rgba(46,125,50,0.2)',
+          primary: '#2E7D32', accent: '#8BC34A',
+          badgeBg: 'rgba(46,125,50,0.18)', badgeFg:'#81C784', badgeBdr:'rgba(46,125,50,0.3)',
+          tiles:   ['#E53935','#2E7D32','#F9A825','#42A5F5','#8BC34A','#00ACC1'],
+        },
+        neon: {
+          navBg:   '#050510', iconBg: '#0a0a20',
+          heroBg:  'linear-gradient(180deg,#050510 0%,#0a0a20 50%,#050510 100%)',
+          heroGlow:'rgba(0,255,255,0.12)',
+          primary: '#00FFFF', accent: '#FF0080',
+          badgeBg: 'rgba(0,255,255,0.1)', badgeFg:'#80FFFF', badgeBdr:'rgba(0,255,255,0.25)',
+          tiles:   ['#FF0080','#00FFFF','#FFFF00','#00FF41','#FF00FF','#0080FF'],
+        },
+        galaxy: {
+          navBg:   '#050510', iconBg: '#0d0520',
+          heroBg:  'linear-gradient(180deg,#050510 0%,#0d0520 50%,#050510 100%)',
+          heroGlow:'rgba(124,77,255,0.2)',
+          primary: '#7C4DFF', accent: '#FF4081',
+          badgeBg: 'rgba(124,77,255,0.18)', badgeFg:'#B39DDB', badgeBdr:'rgba(124,77,255,0.3)',
+          tiles:   ['#FF4081','#7C4DFF','#00BFA5','#FFD740','#FF6D00','#40C4FF'],
+        },
+      };
+
+      /* ── Animation data (paths + colour-index flows) ──────────────── */
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      /*
+        Snake partition — 4 non-overlapping paths covering all 18 tiles:
+          A 3-tile  row 0 cols 0–2  →
+          C 4-tile  row 1 cols 3→0  ←
+          B 5-tile  row 0 cols 3–5, row 1 cols 5–4  (L-shape)
+          D 6-tile  row 2 cols 0–5  →  (full sweep)
+
+        8 flows → each path changes then restores → seamless loop
+      */
+      const FLOWS = [
+        { path:[[0,0],[0,1],[0,2]],                   drop:0 }, // A: idx1→idx0
+        { path:[[1,3],[1,2],[1,1],[1,0]],             drop:5 }, // C: idx4→idx5
+        { path:[[0,3],[0,4],[0,5],[1,5],[1,4]],       drop:3 }, // B: idx2→idx3
+        { path:[[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]], drop:1 }, // D: idx3→idx1
+        { path:[[0,0],[0,1],[0,2]],                   drop:1 }, // A restore
+        { path:[[1,3],[1,2],[1,1],[1,0]],             drop:4 }, // C restore
+        { path:[[0,3],[0,4],[0,5],[1,5],[1,4]],       drop:2 }, // B restore
+        { path:[[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]], drop:3 }, // D restore
+      ];
+
+      const INIT = [
+        [1,1,1, 2,2,2],
+        [4,4,4,4, 2,2],
+        [3,3,3,3,3,3],
+      ];
+
+      /* ── DOM setup ────────────────────────────────────────────────── */
+      const gridEl   = document.getElementById('tf-preview-grid');
+      if (!gridEl) return;
+      const root     = document.documentElement;
+      const navEl    = document.querySelector('nav');
+      const navIcon  = navEl.querySelector('.nav-icon');
+      const navQuads = navIcon.querySelectorAll('.nav-icon-q');
+
+      const tiles = INIT.map(row =>
+        row.map(() => {
+          const el = document.createElement('div');
+          el.className = 'preview-tile';
+          gridEl.appendChild(el);
+          return el;
+        })
+      );
+
+      /* ── Animation engine ─────────────────────────────────────────── */
+      let token = { dead: false };
+
+      function resetGrid(pal) {
+        INIT.forEach((row, r) => row.forEach((ci, c) => {
+          tiles[r][c].className = 'preview-tile';
+          tiles[r][c].style.background = pal[ci];
+        }));
+      }
+
+      async function runAnimation(tok, pal) {
+        let fi = 0;
+        while (!tok.dead) {
+          await sleep(750);          if (tok.dead) return;
+          const { path, drop } = FLOWS[fi++ % FLOWS.length];
+
+          for (const [r, c] of path) {
+            if (tok.dead) return;
+            tiles[r][c].classList.add('tf-selecting');
+            await sleep(130);
+          }
+          if (tok.dead) return;
+          await sleep(200);          if (tok.dead) return;
+
+          for (const [r, c] of path) {
+            tiles[r][c].classList.remove('tf-selecting');
+            tiles[r][c].classList.add('tf-clearing');
+          }
+          await sleep(390);          if (tok.dead) return;
+
+          for (let i = 0; i < path.length; i++) {
+            if (tok.dead) return;
+            const [r, c] = path[i];
+            const el = tiles[r][c];
+            el.classList.remove('tf-clearing');
+            void el.offsetHeight;
+            el.style.background = pal[drop];
+            el.classList.add('tf-dropping');
+            if (i < path.length - 1) await sleep(50);
+          }
+          await sleep(520);          if (tok.dead) return;
+          for (const [r, c] of path) tiles[r][c].classList.remove('tf-dropping');
+        }
+      }
+
+      /* ── Theme switcher ───────────────────────────────────────────── */
+      function applyTheme(id) {
+        const t = THEMES[id];
+        root.style.setProperty('--nav-bg',    t.navBg);
+        root.style.setProperty('--hero-bg',   t.heroBg);
+        root.style.setProperty('--hero-glow', t.heroGlow);
+        root.style.setProperty('--primary',   t.primary);
+        root.style.setProperty('--accent',    t.accent);
+        root.style.setProperty('--badge-bg',  t.badgeBg);
+        root.style.setProperty('--badge-fg',  t.badgeFg);
+        root.style.setProperty('--badge-bdr', t.badgeBdr);
+
+        navIcon.style.background = t.iconBg;
+        navQuads[0].style.background = t.tiles[1];
+        navQuads[1].style.background = t.tiles[0];
+        navQuads[2].style.background = t.tiles[4];
+        navQuads[3].style.background = t.tiles[3];
+
+        token.dead = true;
+        token = { dead: false };
+        resetGrid(t.tiles);
+        runAnimation(token, t.tiles);
+      }
+
+      document.querySelectorAll('.theme-pill[data-theme]').forEach(pill => {
+        pill.addEventListener('click', () => {
+          document.querySelectorAll('.theme-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          localStorage.setItem('tf-theme', pill.dataset.theme);
+          applyTheme(pill.dataset.theme);
+        });
+      });
+
+      /* ── Boot ─────────────────────────────────────────────────────── */
+      const saved = localStorage.getItem('tf-theme');
+      const startTheme = (saved && THEMES[saved]) ? saved : 'classic';
+      if (saved && THEMES[saved]) {
+        document.querySelectorAll('.theme-pill').forEach(p => p.classList.remove('active'));
+        const pill = document.querySelector(`.theme-pill[data-theme="${saved}"]`);
+        if (pill) pill.classList.add('active');
+      }
+      applyTheme(startTheme);
+    })();
+  </script>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-links">
+      <a href="mailto:malek.development@gmail.com">malek.development@gmail.com</a>
+      <a href="/tile-flow/privacy-policy">Privacy Policy</a>
+    </div>
+    <p>© 2026 Malek Katerji</p>
+  </footer>
+
+</body>
+</html>
